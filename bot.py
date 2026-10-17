@@ -57,7 +57,7 @@ def handle_youtube_link(message):
     markup = InlineKeyboardMarkup(row_width=1)
     btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
     btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
-    btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာဘဲ Thumbnail ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
+    btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ 3D ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
     
     markup.add(btn_download, btn_gem, btn_bot)
     
@@ -82,8 +82,8 @@ def callback_query(call):
         
     elif data.startswith("bot_"):
         video_id = data.split("_")[1]
-        bot.answer_callback_query(call.id, "Gemini AI ဖြင့်  Thumbnail တည်ဆောက်နေပါပြီ...")
-        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့်  Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
+        bot.answer_callback_query(call.id, "Gemini AI ဖြင့် Poster တည်ဆောက်နေပါပြီ...")
+        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် Poster အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
         
         try:
             prompt = (
@@ -94,26 +94,37 @@ def callback_query(call):
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            # google-genai ၏ မှန်ကန်သော Imagen Syntax ဖြင့် ပြင်ဆင်ခြင်း
-            response = client.models.generate_image(
-                model='imagen-3.0-generate-002',
-                prompt=prompt,
-                config=types.GenerateImageConfig(
-                    number_of_images=1,
-                    output_mime_type="jpeg",
-                    aspect_ratio="16:9",
+            # မှန်ကန်သော Gemini Image Model ID (gemini-3.1-flash-image) သုံးပြီး ပုံထုတ်ခြင်း
+            response = client.models.generate_content(
+                model='gemini-3.1-flash-image',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                    image_config=types.ImageConfig(
+                        aspect_ratio="16:9",
+                    ),
                 )
             )
 
-            for generated_image in response.generated_images:
-                image_stream = BytesIO(generated_image.image.image_bytes)
-                image_stream.name = "upgraded_thumbnail.jpg"
-                
-                bot.send_photo(
-                    chat_id, 
-                    image_stream, 
-                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                )
+            # ပုံ ရ/မရ စစ်ဆေးပြီး Telegram သို့ ပို့ခြင်း
+            image_found = False
+            for part in response.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    image_stream = BytesIO(image_bytes)
+                    image_stream.name = "upgraded_thumbnail.jpg"
+                    
+                    bot.send_photo(
+                        chat_id, 
+                        image_stream, 
+                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော  Thumbnail Poster အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                    )
+                    image_found = True
+                    break
+            
+            if not image_found:
+                bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။", chat_id, msg.message_id)
+            else:
                 bot.delete_message(chat_id, msg.message_id)
 
         except Exception as e:
