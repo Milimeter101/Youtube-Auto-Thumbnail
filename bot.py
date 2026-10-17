@@ -1,8 +1,7 @@
 import os
 import re
-import threading
 from io import BytesIO
-from flask import Flask
+from flask import Flask, request
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
@@ -11,20 +10,27 @@ from google import genai
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_GEM_URL = os.getenv('GEMINI_GEM_URL')
+RENDER_EXTERNAL_URL = os.getenv('RENDER_EXTERNAL_URL') # Render က သူ့အလိုအလျောက် ပေးသော URL
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Render Port Detect အတွက် Flask Server
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Thumbnail Bot is running 24/7!"
+    return "Thumbnail Bot with Webhook is running 24/7!"
 
-def run_flask():
-    port = int(os.getenv("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+# Telegram Webhook Endpoint (Telegram မှ Message များ တိုက်ရိုက်ဝင်လာမည့်နေရာ)
+@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    else:
+        return '', 403
 
 def extract_youtube_id(url):
     patterns = [
@@ -84,42 +90,42 @@ def callback_query(call):
         
         try:
             prompt = (
-                "Create a dramatically upgraded, high-converting 3D YouTube thumbnail with an ultra-detailed, highly relevant background. "
+                "change and create a dramatically upgraded, high-converting 3D YouTube thumbnail which is relevant to the content with an ultra-detailed, highly relevant background. "
                 "Make all texts clearly visible 3D texts. NO stroke around the text. "
                 "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            # Error စာကြောင်းတွင် ညွှန်ကြားထားသည့်အတိုင်း gemini-3.8-flash ကို ပြောင်းလဲအသုံးပြုခြင်း
-            response = client.models.generate_content(
-                model='gemini-3.8-flash',
-                contents=prompt,
+            response = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=prompt,
                 config=dict(
-                    response_modalities=["IMAGE"]
+                    number_of_images=1,
+                    output_mime_type="image/jpeg",
+                    aspect_ratio="16:9",
                 )
             )
 
-            for part in response.candidates[0].content.parts:
-                if part.inline_data:
-                    image_bytes = part.inline_data.data
-                    image_stream = BytesIO(image_bytes)
-                    image_stream.name = "upgraded_thumbnail.jpg"
-                    
-                    bot.send_photo(
-                        chat_id, 
-                        image_stream, 
-                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                    )
-                    bot.delete_message(chat_id, msg.message_id)
-                    break
+            for generated_image in response.generated_images:
+                image_stream = BytesIO(generated_image.image.image_bytes)
+                image_stream.name = "upgraded_thumbnail.jpg"
+                
+                bot.send_photo(
+                    chat_id, 
+                    image_stream, 
+                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                )
+                bot.delete_message(chat_id, msg.message_id)
 
         except Exception as e:
             bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
-    t = threading.Thread(target=run_flask)
-    t.daemon = True
-    t.start()
+    # Webhook ကို အလိုအလျောက် ချိတ်ဆက်ပေးခြင်း
+    if RENDER_EXTERNAL_URL:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}")
+        print(f"Webhook successfully set to: {RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}")
     
-    print("Bot is running with Web Service...")
-    bot.infinity_polling(skip_pending=True)
+    port = int(os.getenv("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
