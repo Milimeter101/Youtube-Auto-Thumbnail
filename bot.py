@@ -126,7 +126,6 @@ def handle_photo(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # တောင်းဆိုထားသော Prompt အတိအကျ
         prompt = (
             "Make the texts to be more better than the original images (3D texts) clearly visible ,no stroke, "
             "be careful no to be as the same as background color and not golden color (use only red ,neon green, yellow,white), "
@@ -135,7 +134,6 @@ def handle_photo(message):
 
         img = Image.open(io.BytesIO(downloaded_file))
 
-        # တောင်းဆိုထားသည့်အတိုင်း gemini-3.8-flash သို့ ပြောင်းလဲထားခြင်း
         response = client.models.generate_content(
             model='gemini-3.8-flash',
             contents=[prompt, img],
@@ -145,27 +143,38 @@ def handle_photo(message):
         )
 
         image_found = False
-        for part in response.candidates[0].content.parts:
-            if part.inline_data:
-                image_bytes = part.inline_data.data
-                image_stream = BytesIO(image_bytes)
-                image_stream.name = "upgraded_thumbnail.jpg"
-                
-                bot.send_photo(
-                    chat_id, 
-                    image_stream, 
-                    caption="✅ Reference ပုံကို အခြေခံ၍ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                )
-                image_found = True
-                break
+        if response.candidates:
+            candidate = response.candidates[0]
+            if candidate.content and candidate.content.parts:
+                for part in candidate.content.parts:
+                    if hasattr(part, 'inline_data') and part.inline_data:
+                        image_bytes = part.inline_data.data
+                        image_stream = BytesIO(image_bytes)
+                        image_stream.name = "upgraded_thumbnail.jpg"
+                        
+                        bot.send_photo(
+                            chat_id, 
+                            image_stream, 
+                            caption="✅ Reference ပုံကို အခြေခံ၍ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                        )
+                        image_found = True
+                        break
         
         if image_found:
             bot.delete_message(chat_id, msg.message_id)
         else:
-            bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။", chat_id, msg.message_id)
+            markup = InlineKeyboardMarkup(row_width=1)
+            btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
+            markup.add(btn_gem)
+            
+            bot.edit_message_text(
+                "⚠️ လက်ရှိ Bot ထဲတွင် ပုံထုတ်ယူ၍ မရသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက် ဆောင်ရွက်ပေးပါခင်ဗျာ။ 🎨✨", 
+                chat_id, 
+                msg.message_id, 
+                reply_markup=markup
+            )
 
     except Exception as e:
-        # Bot ထဲတွင် တန်းမရပါက Gemini Gem သို့ သွားရန် ညွှန်ပြမည့် Fallback ပုံစံ
         markup = InlineKeyboardMarkup(row_width=1)
         btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
         markup.add(btn_gem)
