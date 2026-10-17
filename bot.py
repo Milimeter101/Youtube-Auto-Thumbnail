@@ -1,6 +1,6 @@
 import os
 import re
-import requests
+import threading
 from io import BytesIO
 from flask import Flask
 import telebot
@@ -57,7 +57,7 @@ def handle_youtube_link(message):
     markup = InlineKeyboardMarkup(row_width=1)
     btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
     btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
-    btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ 3D ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
+    btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာဘဲ Thumbnail ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
     
     markup.add(btn_download, btn_gem, btn_bot)
     
@@ -82,32 +82,30 @@ def callback_query(call):
         
     elif data.startswith("bot_"):
         video_id = data.split("_")[1]
-        bot.answer_callback_query(call.id, "Gemini AI ဖြင့် 3D Thumbnail တည်ဆောက်နေပါပြီ...")
-        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် 3D Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
+        bot.answer_callback_query(call.id, "Gemini AI ဖြင့်  Thumbnail တည်ဆောက်နေပါပြီ...")
+        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့်  Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
         
         try:
-            thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
-            response = requests.get(thumbnail_url)
-            
             prompt = (
-                "Analyze this reference thumbnail and create a dramatically upgraded, high-converting 3D thumbnail. "
+                "Analyze this YouTube reference thumbnail and create a dramatically upgraded, high-converting 3D thumbnail. "
                 "Change and replace the background which is relevant to the content with an ultra-detailed, highly relevant background. "
                 "Make all texts clearly visible 3D texts. NO stroke around the text. "
                 "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            result = client.models.generate_images(
+            # google-genai ၏ မှန်ကန်သော Imagen Syntax ဖြင့် ပြင်ဆင်ခြင်း
+            response = client.models.generate_image(
                 model='imagen-3.0-generate-002',
                 prompt=prompt,
-                config=types.GenerateImagesConfig(
+                config=types.GenerateImageConfig(
                     number_of_images=1,
-                    output_mime_type="image/jpeg",
+                    output_mime_type="jpeg",
                     aspect_ratio="16:9",
                 )
             )
 
-            for generated_image in result.generated_images:
+            for generated_image in response.generated_images:
                 image_stream = BytesIO(generated_image.image.image_bytes)
                 image_stream.name = "upgraded_thumbnail.jpg"
                 
@@ -122,7 +120,6 @@ def callback_query(call):
             bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
-    import threading
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
