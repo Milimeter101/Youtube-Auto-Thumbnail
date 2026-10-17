@@ -90,9 +90,9 @@ def callback_query(call):
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            # ပုံထုတ်ရန်အတွက် အမှန်တကယ် အလုပ်လုပ်သော gemini-2.5-flash (သို့မဟုတ် gemini-2.5-pro) ကို အသုံးပြုခြင်း
+            # Error စာကြောင်းတွင် ညွှန်ကြားထားသည့်အတိုင်း gemini-3.8-flash ကို ပြောင်းလဲအသုံးပြုခြင်း
             response = client.models.generate_content(
-                model='gemini-2.5-flash',
+                model='gemini-3.8-flash',
                 contents=prompt,
                 config=dict(
                     response_modalities=["IMAGE"]
