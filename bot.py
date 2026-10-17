@@ -128,7 +128,7 @@ def callback_query(call):
                 bot.delete_message(chat_id, msg.message_id)
 
         except Exception as e:
-            bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
+            bot.edit_message_text(f"❌ လက်ရှိ Function upgrade လုပ်နေဆဲမို့ အပေါ်က Gemini Gem ကနေသွားပေးပါ: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
     t = threading.Thread(target=run_flask)
