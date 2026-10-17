@@ -1,28 +1,32 @@
 import os
 import re
-import threading
+import requests
+from io import BytesIO
 from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from google import genai
+from google.genai import types
 
-# Environment Variables မှတစ်ဆင့် Token နှင့် Gem URL ယူခြင်း
-TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+# Environment Variables မှ ယူခြင်း
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_GEM_URL = os.getenv('GEMINI_GEM_URL')
 
-bot = telebot.TeleBot(TOKEN)
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Render Port Detect ရအောင် Flask Server သေးသေးလေး ထည့်ပေးထားခြင်း
+# Render Port Detect အတွက် Flask Server
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is running online 24/7!"
+    return "Thumbnail Bot with Options is running 24/7!"
 
 def run_flask():
     port = int(os.getenv("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# YouTube Video ID ဖြတ်ထုတ်ပေးမယ့် Function
 def extract_youtube_id(url):
     patterns = [
         r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
@@ -36,34 +40,92 @@ def extract_youtube_id(url):
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    bot.reply_to(message, "မင်္ဂလာပါ! YouTube Link တစ်ခု ပို့ပေးပါ။ Thumbnail ပုံကို ထုတ်ပေးပြီး Gemini Gem ဆီ ချိတ်ဆက်ပေးပါမယ်။ 🎬")
+    bot.reply_to(message, "မင်္ဂလာပါ! YouTube Link တစ်ခု ပို့ပေးပါ။ အောက်ပါ Options များကို အသုံးပြုနိုင်ပါမည်။ 🎬")
 
 @bot.message_handler(func=lambda message: True)
 def handle_youtube_link(message):
     text = message.text
     video_id = extract_youtube_id(text)
     
-    if video_id:
-        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
-        
-        markup = InlineKeyboardMarkup()
-        btn = InlineKeyboardButton("🎨 Gemini Gem ဖြင့် Thumbnail အသစ်ထုတ်မည်", url=GEMINI_GEM_URL)
-        markup.add(btn)
-        
-        bot.send_photo(
-            message.chat.id, 
-            thumbnail_url, 
-            caption="✅ YouTube Thumbnail အောင်မြင်စွာ Extract လုပ်ပြီးပါပြီ!\nအောက်ပါ Button ကိုနှိပ်ပြီး သင့်ရဲ့ Custom Gem ထဲမှာ ပုံအသစ် ဆက်ထုတ်နိုင်ပါပြီ။", 
-            reply_markup=markup
-        )
-    else:
+    if not video_id:
         bot.reply_to(message, "❌ ကျေးဇူးပြု၍ မှန်ကန်သော YouTube Video Link တစ်ခု ပို့ပေးပါခင်ဗျာ။")
+        return
+
+    thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+    
+    # Options ၃ ခုအတွက် Inline Keyboard ဖန်တီးခြင်း
+    markup = InlineKeyboardMarkup(row_width=1)
+    btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
+    btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
+    btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ 3D ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
+    
+    markup.add(btn_download, btn_gem, btn_bot)
+    
+    bot.send_photo(
+        message.chat.id, 
+        thumbnail_url, 
+        caption="✅ YouTube Thumbnail အောင်မြင်စွာ ရရှိပါပြီ!\nအောက်ပါ Options များထဲမှ လိုအပ်တာကို ရွေးချယ်ပါ -", 
+        reply_markup=markup
+    )
+
+# Button များကို နှိပ်လိုက်သည့်အခါ လုပ်ဆောင်ချက်များ
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    data = call.data
+    chat_id = call.message.chat.id
+    
+    if data.startswith("dl_"):
+        video_id = data.split("_")[1]
+        thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+        bot.answer_callback_query(call.id, "Thumbnail ပုံကို ပို့ပေးနေပါပြီ...")
+        bot.send_document(chat_id, thumbnail_url, caption="📥 ဤနေရာတွင် Download ဆွဲနိုင်ပါသည်။")
+        
+    elif data.startswith("bot_"):
+        video_id = data.split("_")[1]
+        bot.answer_callback_query(call.id, "Gemini AI ဖြင့် 3D Thumbnail တည်ဆောက်နေပါပြီ...")
+        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် 3D Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
+        
+        try:
+            thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+            response = requests.get(thumbnail_url)
+            
+            prompt = (
+                "Analyze this reference thumbnail and create a dramatically upgraded, high-converting 3D thumbnail. "
+                "Change and replace the background with an ultra-detailed, highly relevant background. "
+                "Make all texts clearly visible 3D texts. NO stroke around the text. "
+                "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
+                "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
+            )
+
+            result = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=prompt,
+                config=types.GenerateImagesConfig(
+                    number_of_images=1,
+                    output_mime_type="image/jpeg",
+                    aspect_ratio="16:9",
+                )
+            )
+
+            for generated_image in result.generated_images:
+                image_stream = BytesIO(generated_image.image.image_bytes)
+                image_stream.name = "upgraded_thumbnail.jpg"
+                
+                bot.send_photo(
+                    chat_id, 
+                    image_stream, 
+                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                )
+                bot.delete_message(chat_id, msg.message_id)
+
+        except Exception as e:
+            bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
-    # Flask Server ကို Thread ခွဲပြီး သီးသန့် Run မယ်
+    import threading
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
     
-    print("Bot is running...")
+    print("Bot with 3 Options is running...")
     bot.infinity_polling()
