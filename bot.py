@@ -15,7 +15,7 @@ GEMINI_GEM_URL = os.getenv('GEMINI_GEM_URL')
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Render Port Detect အတွက် Flask Server (Web Service အတွက် မဖြစ်မနေ လိုအပ်သည်)
+# Render Port Detect အတွက် Flask Server
 app = Flask(__name__)
 
 @app.route('/')
@@ -90,36 +90,36 @@ def callback_query(call):
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            response = client.models.generate_images(
-                model='imagen-3.0-generate-002',
-                prompt=prompt,
+            # ပုံထုတ်ရန်အတွက် အမှန်တကယ် အလုပ်လုပ်သော gemini-2.5-flash (သို့မဟုတ် gemini-2.5-pro) ကို အသုံးပြုခြင်း
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
                 config=dict(
-                    number_of_images=1,
-                    output_mime_type="image/jpeg",
-                    aspect_ratio="16:9",
+                    response_modalities=["IMAGE"]
                 )
             )
 
-            for generated_image in response.generated_images:
-                image_stream = BytesIO(generated_image.image.image_bytes)
-                image_stream.name = "upgraded_thumbnail.jpg"
-                
-                bot.send_photo(
-                    chat_id, 
-                    image_stream, 
-                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                )
-                bot.delete_message(chat_id, msg.message_id)
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    image_stream = BytesIO(image_bytes)
+                    image_stream.name = "upgraded_thumbnail.jpg"
+                    
+                    bot.send_photo(
+                        chat_id, 
+                        image_stream, 
+                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                    )
+                    bot.delete_message(chat_id, msg.message_id)
+                    break
 
         except Exception as e:
             bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
-    # Flask Server ကို Background Thread ဖြင့် Run ခြင်း
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
     
     print("Bot is running with Web Service...")
-    # Telegram Bot Polling တွင် ဝင်လာနိုင်သော Concurrency အမှားများကို ရှောင်ရှားရန်
     bot.infinity_polling(skip_pending=True)
