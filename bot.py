@@ -5,8 +5,7 @@ from flask import Flask, request
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
-from PIL import Image
-import io
+from google.genai import types
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -70,7 +69,7 @@ def callback_query(call):
         
     elif data == "mode_reference":
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, "🖼️ ကျေးဇူးပြု၍ 3D ပုံအသစ် ထုတ်ချင်သော Thumbnail ပုံကို (Photo ပုံစံဖြင့်) တိုက်ရိုက် တင်ပေးပါ။")
+        bot.send_message(chat_id, "🖼️ ကျေးဇူးပြု၍ Thumbnail ပုံအသစ် ထုတ်ချင်သော Thumbnail ပုံကို (Photo ပုံစံဖြင့်) တိုက်ရိုက် တင်ပေးပါ။")
         
     elif data.startswith("dl_"):
         video_id = data.split("_")[1]
@@ -91,26 +90,34 @@ def callback_query(call):
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            response = client.models.generate_images(
-                model='imagen-3.0-generate-002',
-                prompt=prompt,
-                config=dict(
-                    number_of_images=1,
-                    output_mime_type="image/jpeg",
-                    aspect_ratio="16:9",
+            # SDK အသစ်၏ မှန်ကန်သော Image Generation Syntax
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"]
                 )
             )
 
-            for generated_image in response.generated_images:
-                image_stream = BytesIO(generated_image.image.image_bytes)
-                image_stream.name = "upgraded_thumbnail.jpg"
-                
-                bot.send_photo(
-                    chat_id, 
-                    image_stream, 
-                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                )
+            image_found = False
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    image_stream = BytesIO(image_bytes)
+                    image_stream.name = "upgraded_thumbnail.jpg"
+                    
+                    bot.send_photo(
+                        chat_id, 
+                        image_stream, 
+                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                    )
+                    image_found = True
+                    break
+            
+            if image_found:
                 bot.delete_message(chat_id, msg.message_id)
+            else:
+                bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။", chat_id, msg.message_id)
 
         except Exception as e:
             bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
@@ -127,7 +134,7 @@ def handle_text(message):
         markup = InlineKeyboardMarkup(row_width=1)
         btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
         btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
-        btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ 3D ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
+        btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ Thumbnail ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
         
         markup.add(btn_download, btn_gem, btn_bot)
         
@@ -150,36 +157,44 @@ def handle_photo(message):
         downloaded_file = bot.download_file(file_info.file_path)
         
         prompt = (
-            "Analyze this reference thumbnail and create a dramatically upgraded, high-converting 3D YouTube thumbnail. "
-            "Change and replace the background with an ultra-detailed, highly relevant background. "
-            "Make all texts clearly visible 3D texts. NO stroke around the text. "
-            "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
-            "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
+            "Make the texts to be more better than the original images (3d texts) clearly visible ,no stroke,be careful no to be as the same as background color and not golden color (use only red ,neon green, yellow,white),be careful not to be duplicated text color,not too small text size and change the background which is relevant to the content...
+colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
         )
 
-        response = client.models.generate_images(
-            model='imagen-3.0-generate-002',
-            prompt=prompt,
-            config=dict(
-                number_of_images=1,
-                output_mime_type="image/jpeg",
-                aspect_ratio="16:9",
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(downloaded_file))
+
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[prompt, img],
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE"]
             )
         )
 
-        for generated_image in response.generated_images:
-            image_stream = BytesIO(generated_image.image.image_bytes)
-            image_stream.name = "upgraded_thumbnail.jpg"
-            
-            bot.send_photo(
-                chat_id, 
-                image_stream, 
-                caption="✅ Reference ပုံကို အခြေခံ၍ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-            )
+        image_found = False
+        for part in response.candidates[0].content.parts:
+            if part.inline_data:
+                image_bytes = part.inline_data.data
+                image_stream = BytesIO(image_bytes)
+                image_stream.name = "upgraded_thumbnail.jpg"
+                
+                bot.send_photo(
+                    chat_id, 
+                    image_stream, 
+                    caption="✅ Reference ပုံကို အခြေခံ၍ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                )
+                image_found = True
+                break
+        
+        if image_found:
             bot.delete_message(chat_id, msg.message_id)
+        else:
+            bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။", chat_id, msg.message_id)
 
     except Exception as e:
-        bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
+        bot.edit_message_text(f"❌ လက်ရှိ function မရသေးပါ: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
     if RENDER_EXTERNAL_URL:
