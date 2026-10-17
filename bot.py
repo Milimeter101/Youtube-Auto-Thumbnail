@@ -69,7 +69,7 @@ def callback_query(call):
         
     elif data == "mode_reference":
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, "🖼️ ကျေးဇူးပြု၍ Thumbnail ပုံအသစ် ထုတ်ချင်သော Thumbnail ပုံကို (Photo ပုံစံဖြင့်) တိုက်ရိုက် တင်ပေးပါ။")
+        bot.send_message(chat_id, "🖼️ ကျေးဇူးပြု၍ 3D ပုံအသစ် ထုတ်ချင်သော Thumbnail ပုံကို (Photo ပုံစံဖြင့်) တိုက်ရိုက် တင်ပေးပါ။")
         
     elif data.startswith("dl_"):
         video_id = data.split("_")[1]
@@ -83,14 +83,13 @@ def callback_query(call):
         msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် 3D Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
         
         try:
+            # တောင်းဆိုထားသော စည်းမျဉ်းများအတိုင်း တိကျသော Prompt အသစ်
             prompt = (
-                "Create a dramatically upgraded, high-converting 3D YouTube thumbnail with an ultra-detailed, highly relevant background. "
-                "Make all texts clearly visible 3D texts. NO stroke around the text. "
-                "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
-                "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
+                "Make the texts to be more better than the original images (3D texts), clearly visible, no stroke, "
+                "be careful not to be as the same as background color and not golden color (use only red, neon green, yellow, white), "
+                "be careful not to be duplicated text color, not too small text size, and change the background which is relevant to the content."
             )
 
-            # SDK အသစ်၏ မှန်ကန်သော Image Generation Syntax
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt,
@@ -134,7 +133,7 @@ def handle_text(message):
         markup = InlineKeyboardMarkup(row_width=1)
         btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
         btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
-        btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ Thumbnail ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
+        btn_bot = InlineKeyboardButton("🎨 Bot ထဲမှာ 3D ပုံ ဆက်ထုတ်ရန်", callback_data=f"bot_{video_id}")
         
         markup.add(btn_download, btn_gem, btn_bot)
         
@@ -156,9 +155,12 @@ def handle_photo(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
+        # Reference ပုံအတွက်ပါ Prompt တောင်းဆိုချက် အသစ်ကို ထည့်သွင်းခြင်း
         prompt = (
-            "Make the texts to be more better than the original images (3d texts) clearly visible ,no stroke,be careful no to be as the same as background color and not golden color (use only red ,neon green, yellow,white),be careful not to be duplicated text color,not too small text size and change the background which is relevant to the content...
-colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
+            "Make the texts to be more better than the original images (3D texts), clearly visible, no stroke, "
+            "be careful not to be as the same as background color and not golden color (use only red, neon green, yellow, white), "
+            "be careful not to be duplicated text color, not too small text size, and change the background which is relevant to the content, "
+            "based on this reference image."
         )
 
         from PIL import Image
@@ -194,7 +196,7 @@ colors do not blend into the background, avoid duplicated text colors, and make 
             bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။", chat_id, msg.message_id)
 
     except Exception as e:
-        bot.edit_message_text(f"❌ လက်ရှိ function မရသေးပါ: {str(e)}", chat_id, msg.message_id)
+        bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
     if RENDER_EXTERNAL_URL:
