@@ -1,14 +1,28 @@
 import os
+import re
+import threading
+from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import re
 
-# Render Environment Variables ထဲကနေ Token ကို ယူသုံးခြင်း (လုံခြုံရေးအတွက်)
+# Environment Variables မှတစ်ဆင့် Token နှင့် Gem URL ယူခြင်း
 TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_GEM_URL = os.getenv('GEMINI_GEM_URL')
 
 bot = telebot.TeleBot(TOKEN)
 
+# Render Port Detect ရအောင် Flask Server သေးသေးလေး ထည့်ပေးထားခြင်း
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running online 24/7!"
+
+def run_flask():
+    port = int(os.getenv("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# YouTube Video ID ဖြတ်ထုတ်ပေးမယ့် Function
 def extract_youtube_id(url):
     patterns = [
         r'(?:v=|\/)([0-9A-Za-z_-]{11}).*',
@@ -46,5 +60,10 @@ def handle_youtube_link(message):
         bot.reply_to(message, "❌ ကျေးဇူးပြု၍ မှန်ကန်သော YouTube Video Link တစ်ခု ပို့ပေးပါခင်ဗျာ။")
 
 if __name__ == '__main__':
-    print("Bot is running 24/7 on Render...")
+    # Flask Server ကို Thread ခွဲပြီး သီးသန့် Run မယ်
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+    
+    print("Bot is running...")
     bot.infinity_polling()
