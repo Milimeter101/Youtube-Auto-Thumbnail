@@ -1,36 +1,31 @@
 import os
 import re
+import threading
 from io import BytesIO
-from flask import Flask, request
+from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
+from google.genai import types
 
 # Environment Variables မှ ယူခြင်း
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_GEM_URL = os.getenv('GEMINI_GEM_URL')
-RENDER_EXTERNAL_URL = os.getenv('RENDER_EXTERNAL_URL') # Render က သူ့အလိုအလျောက် ပေးသော URL
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+# Render Port Detect အတွက် Flask Server
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Thumbnail Bot with Webhook is running 24/7!"
+    return "Thumbnail Bot with Options is running 24/7!"
 
-# Telegram Webhook Endpoint (Telegram မှ Message များ တိုက်ရိုက်ဝင်လာမည့်နေရာ)
-@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return '', 200
-    else:
-        return '', 403
+def run_flask():
+    port = int(os.getenv("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def extract_youtube_id(url):
     patterns = [
@@ -58,6 +53,7 @@ def handle_youtube_link(message):
 
     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
     
+    # Options ၃ ခုအတွက် Inline Keyboard ဖန်တီးခြင်း
     markup = InlineKeyboardMarkup(row_width=1)
     btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
     btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
@@ -72,6 +68,7 @@ def handle_youtube_link(message):
         reply_markup=markup
     )
 
+# Button များကို နှိပ်လိုက်သည့်အခါ လုပ်ဆောင်ချက်များ
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     data = call.data
@@ -90,42 +87,53 @@ def callback_query(call):
         
         try:
             prompt = (
-                "change and create a dramatically upgraded, high-converting 3D YouTube thumbnail which is relevant to the content with an ultra-detailed, highly relevant background. "
+                "Analyze this YouTube reference thumbnail and create a dramatically upgraded, high-converting 3D thumbnail. "
+                "Change and replace the background which is relevant to the content with an ultra-detailed, highly relevant background. "
                 "Make all texts clearly visible 3D texts. NO stroke around the text. "
                 "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            response = client.models.generate_images(
-                model='imagen-3.0-generate-002',
-                prompt=prompt,
-                config=dict(
-                    number_of_images=1,
-                    output_mime_type="image/jpeg",
-                    aspect_ratio="16:9",
+            # မှန်ကန်သော Gemini Image Model ID (gemini-3.1-flash-image) သုံးပြီး ပုံထုတ်ခြင်း
+            response = client.models.generate_content(
+                model='gemini-3.1-flash-image',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"],
+                    image_config=types.ImageConfig(
+                        aspect_ratio="16:9",
+                    ),
                 )
             )
 
-            for generated_image in response.generated_images:
-                image_stream = BytesIO(generated_image.image.image_bytes)
-                image_stream.name = "upgraded_thumbnail.jpg"
-                
-                bot.send_photo(
-                    chat_id, 
-                    image_stream, 
-                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                )
+            # ပုံ ရ/မရ စစ်ဆေးပြီး Telegram သို့ ပို့ခြင်း
+            image_found = False
+            for part in response.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    image_stream = BytesIO(image_bytes)
+                    image_stream.name = "upgraded_thumbnail.jpg"
+                    
+                    bot.send_photo(
+                        chat_id, 
+                        image_stream, 
+                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                    )
+                    image_found = True
+                    break
+            
+            if not image_found:
+                bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။", chat_id, msg.message_id)
+            else:
                 bot.delete_message(chat_id, msg.message_id)
 
         except Exception as e:
-            bot.edit_message_text(f"❌ လက်ရှိ upgrade လုပ်နေတုန်းမို့ အပေါ်က Gemini Gem ကနေသွားပေးပါ: {str(e)}", chat_id, msg.message_id)
+            bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
-    # Webhook ကို အလိုအလျောက် ချိတ်ဆက်ပေးခြင်း
-    if RENDER_EXTERNAL_URL:
-        bot.remove_webhook()
-        bot.set_webhook(url=f"{RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}")
-        print(f"Webhook successfully set to: {RENDER_EXTERNAL_URL}/{TELEGRAM_TOKEN}")
+    t = threading.Thread(target=run_flask)
+    t.daemon = True
+    t.start()
     
-    port = int(os.getenv("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    print("Bot with 3 Options is running...")
+    bot.infinity_polling()
