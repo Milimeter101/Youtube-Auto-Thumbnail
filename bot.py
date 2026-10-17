@@ -6,7 +6,6 @@ from flask import Flask
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
-from google.genai import types
 
 # Environment Variables မှ ယူခြင်း
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -16,12 +15,12 @@ GEMINI_GEM_URL = os.getenv('GEMINI_GEM_URL')
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Render Port Detect အတွက် Flask Server
+# Render Port Detect အတွက် Flask Server (Web Service အတွက် မဖြစ်မနေ လိုအပ်သည်)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Thumbnail Bot with Options is running 24/7!"
+    return "Thumbnail Bot is running 24/7!"
 
 def run_flask():
     port = int(os.getenv("PORT", 8080))
@@ -53,7 +52,6 @@ def handle_youtube_link(message):
 
     thumbnail_url = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
     
-    # Options ၃ ခုအတွက် Inline Keyboard ဖန်တီးခြင်း
     markup = InlineKeyboardMarkup(row_width=1)
     btn_download = InlineKeyboardButton("📥 Thumbnail Download လုပ်ရန်", callback_data=f"dl_{video_id}")
     btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
@@ -68,7 +66,6 @@ def handle_youtube_link(message):
         reply_markup=markup
     )
 
-# Button များကို နှိပ်လိုက်သည့်အခါ လုပ်ဆောင်ချက်များ
 @bot.callback_query_handler(func=lambda call: True)
 def callback_query(call):
     data = call.data
@@ -82,58 +79,47 @@ def callback_query(call):
         
     elif data.startswith("bot_"):
         video_id = data.split("_")[1]
-        bot.answer_callback_query(call.id, "Gemini AI ဖြင့် Poster တည်ဆောက်နေပါပြီ...")
-        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် Poster အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
+        bot.answer_callback_query(call.id, "Gemini AI ဖြင့် 3D Thumbnail တည်ဆောက်နေပါပြီ...")
+        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် 3D Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
         
         try:
             prompt = (
-                "Analyze this YouTube reference thumbnail and create a dramatically upgraded, high-converting 3D thumbnail. "
-                "Change and replace the background which is relevant to the content with an ultra-detailed, highly relevant background. "
+                "Create a dramatically upgraded, high-converting 3D YouTube thumbnail with an ultra-detailed, highly relevant background. "
                 "Make all texts clearly visible 3D texts. NO stroke around the text. "
                 "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
             )
 
-            # မှန်ကန်သော Gemini Image Model ID (gemini-3.1-flash-image) သုံးပြီး ပုံထုတ်ခြင်း
-            response = client.models.generate_content(
-                model='gemini-3.1-flash-image',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE"],
-                    image_config=types.ImageConfig(
-                        aspect_ratio="16:9",
-                    ),
+            response = client.models.generate_images(
+                model='imagen-3.0-generate-002',
+                prompt=prompt,
+                config=dict(
+                    number_of_images=1,
+                    output_mime_type="image/jpeg",
+                    aspect_ratio="16:9",
                 )
             )
 
-            # ပုံ ရ/မရ စစ်ဆေးပြီး Telegram သို့ ပို့ခြင်း
-            image_found = False
-            for part in response.parts:
-                if part.inline_data:
-                    image_bytes = part.inline_data.data
-                    image_stream = BytesIO(image_bytes)
-                    image_stream.name = "upgraded_thumbnail.jpg"
-                    
-                    bot.send_photo(
-                        chat_id, 
-                        image_stream, 
-                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော  Thumbnail Poster အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                    )
-                    image_found = True
-                    break
-            
-            if not image_found:
-                bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။", chat_id, msg.message_id)
-            else:
+            for generated_image in response.generated_images:
+                image_stream = BytesIO(generated_image.image.image_bytes)
+                image_stream.name = "upgraded_thumbnail.jpg"
+                
+                bot.send_photo(
+                    chat_id, 
+                    image_stream, 
+                    caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
+                )
                 bot.delete_message(chat_id, msg.message_id)
 
         except Exception as e:
             bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
 
 if __name__ == '__main__':
+    # Flask Server ကို Background Thread ဖြင့် Run ခြင်း
     t = threading.Thread(target=run_flask)
     t.daemon = True
     t.start()
     
-    print("Bot with 3 Options is running...")
-    bot.infinity_polling()
+    print("Bot is running with Web Service...")
+    # Telegram Bot Polling တွင် ဝင်လာနိုင်သော Concurrency အမှားများကို ရှောင်ရှားရန်
+    bot.infinity_polling(skip_pending=True)
