@@ -6,6 +6,8 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from google import genai
 from google.genai import types
+from PIL import Image
+import io
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -78,48 +80,17 @@ def callback_query(call):
         bot.send_document(chat_id, thumbnail_url, caption="📥 ဤနေရာတွင် Download ဆွဲနိုင်ပါသည်။")
         
     elif data.startswith("bot_"):
-        video_id = data.split("_")[1]
-        bot.answer_callback_query(call.id, "Gemini AI ဖြင့် 3D Thumbnail တည်ဆောက်နေပါပြီ...")
-        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် 3D Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
+        bot.answer_callback_query(call.id)
+        markup = InlineKeyboardMarkup(row_width=1)
+        btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
+        markup.add(btn_gem)
         
-        try:
-            # တောင်းဆိုထားသော စည်းမျဉ်းများအတိုင်း တိကျသော Prompt အသစ်
-            prompt = (
-                "Make the texts to be more better than the original images (3D texts), clearly visible, no stroke, "
-                "be careful not to be as the same as background color and not golden color (use only red, neon green, yellow, white), "
-                "be careful not to be duplicated text color, not too small text size, and change the background which is relevant to the content."
-            )
-
-            response = client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE"]
-                )
-            )
-
-            image_found = False
-            for part in response.candidates[0].content.parts:
-                if part.inline_data:
-                    image_bytes = part.inline_data.data
-                    image_stream = BytesIO(image_bytes)
-                    image_stream.name = "upgraded_thumbnail.jpg"
-                    
-                    bot.send_photo(
-                        chat_id, 
-                        image_stream, 
-                        caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                    )
-                    image_found = True
-                    break
-            
-            if image_found:
-                bot.delete_message(chat_id, msg.message_id)
-            else:
-                bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။ ကျေးဇူးပြု၍ ထပ်မံကြိုးစားပါ။", chat_id, msg.message_id)
-
-        except Exception as e:
-            bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
+        bot.send_message(
+            chat_id, 
+            "⚠️ လက်ရှိ Bot ၏ 3D Thumbnail Function မှာ upgrade လုပ်နေဆဲဖြစ်ပါသဖြင့် Bot ထဲတွင် ပုံထုတ်၍မရသေးပါ။ "
+            "ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက်၍ ပုံထုတ်ပေးပါခင်ဗျာ။ 🎨✨", 
+            reply_markup=markup
+        )
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_text(message):
@@ -155,20 +126,18 @@ def handle_photo(message):
         file_info = bot.get_file(message.photo[-1].file_id)
         downloaded_file = bot.download_file(file_info.file_path)
         
-        # Reference ပုံအတွက်ပါ Prompt တောင်းဆိုချက် အသစ်ကို ထည့်သွင်းခြင်း
+        # တောင်းဆိုထားသော Prompt အတိအကျ
         prompt = (
-            "Make the texts to be more better than the original images (3D texts), clearly visible, no stroke, "
-            "be careful not to be as the same as background color and not golden color (use only red, neon green, yellow, white), "
-            "be careful not to be duplicated text color, not too small text size, and change the background which is relevant to the content, "
-            "based on this reference image."
+            "Make the texts to be more better than the original images (3D texts) clearly visible ,no stroke, "
+            "be careful no to be as the same as background color and not golden color (use only red ,neon green, yellow,white), "
+            "be careful not to be duplicated text color,not too small text size and change the background which is relevant to the content."
         )
 
-        from PIL import Image
-        import io
         img = Image.open(io.BytesIO(downloaded_file))
 
+        # တောင်းဆိုထားသည့်အတိုင်း gemini-3.8-flash သို့ ပြောင်းလဲထားခြင်း
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.8-flash',
             contents=[prompt, img],
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE"]
@@ -196,7 +165,18 @@ def handle_photo(message):
             bot.edit_message_text("❌ ပုံထုတ်လုပ်၍ မရရှိပါ။", chat_id, msg.message_id)
 
     except Exception as e:
-        bot.edit_message_text(f"❌ အမှားအယွင်း ဖြစ်ပွားသွားပါသည်: {str(e)}", chat_id, msg.message_id)
+        # Bot ထဲတွင် တန်းမရပါက Gemini Gem သို့ သွားရန် ညွှန်ပြမည့် Fallback ပုံစံ
+        markup = InlineKeyboardMarkup(row_width=1)
+        btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
+        markup.add(btn_gem)
+        
+        bot.edit_message_text(
+            f"⚠️ လက်ရှိ function upgrade လုပ်နေဆဲဖြစ်ပါသဖြင့် Bot ထဲတွင် ပုံထုတ်၍မရသေးပါ။ "
+            f"ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက် ဆောင်ရွက်ပေးပါခင်ဗျာ။ 🎨✨\n\n(Error: {str(e)})", 
+            chat_id, 
+            msg.message_id, 
+            reply_markup=markup
+        )
 
 if __name__ == '__main__':
     if RENDER_EXTERNAL_URL:
