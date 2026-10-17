@@ -91,7 +91,7 @@ def callback_query(call):
             
             prompt = (
                 "Analyze this reference thumbnail and create a dramatically upgraded, high-converting 3D thumbnail. "
-                "Change and replace the background with an ultra-detailed, highly relevant background. "
+                "Change and replace the background which is relevant to the content with an ultra-detailed, highly relevant background. "
                 "Make all texts clearly visible 3D texts. NO stroke around the text. "
                 "COLOR PALETTE RESTRICTION: STRICTLY use only Red, Neon Green, Yellow, and White. Do NOT use Golden color. "
                 "Ensure text colors do not blend into the background, avoid duplicated text colors, and make sure text size is large and readable."
