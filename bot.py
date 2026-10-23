@@ -81,16 +81,60 @@ def callback_query(call):
         
     elif data.startswith("bot_"):
         bot.answer_callback_query(call.id)
-        markup = InlineKeyboardMarkup(row_width=1)
-        btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
-        markup.add(btn_gem)
+        msg = bot.send_message(chat_id, "⏳ Gemini AI ဖြင့် 3D Thumbnail အသစ် ဖန်တီးနေပါပြီ... ခေတ္တစောင့်ဆိုင်းပေးပါ။")
         
-        bot.send_message(
-            chat_id, 
-            "⚠️ လက်ရှိ Bot ၏ 3D Thumbnail Function မှာ upgrade လုပ်နေဆဲဖြစ်ပါသဖြင့် Bot ထဲတွင် ပုံထုတ်၍မရသေးပါ။ "
-            "ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက်၍ ပုံထုတ်ပေးပါခင်ဗျာ။ 🎨✨", 
-            reply_markup=markup
-        )
+        try:
+            prompt = (
+                "Make the texts to be more better than the original images (3D texts) clearly visible ,no stroke, "
+                "be careful no to be as the same as background color and not golden color (use only red ,neon green, yellow,white), "
+                "be careful not to be duplicated text color,not too small text size and change the background which is relevant to the content."
+            )
+
+            response = client.models.generate_content(
+                model='gemini-3.8-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE"]
+                )
+            )
+
+            image_bytes = None
+            if response.candidates:
+                for candidate in response.candidates:
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'inline_data') and part.inline_data:
+                                image_bytes = part.inline_data.data
+                                break
+                    if image_bytes:
+                        break
+
+            if image_bytes:
+                image_stream = BytesIO(image_bytes)
+                image_stream.name = "upgraded_thumbnail.jpg"
+                bot.send_photo(chat_id, image_stream, caption="✅ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥")
+                bot.delete_message(chat_id, msg.message_id)
+            else:
+                markup = InlineKeyboardMarkup(row_width=1)
+                btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
+                markup.add(btn_gem)
+                bot.edit_message_text(
+                    "⚠️ လက်ရှိ Bot ထဲတွင် ပုံထုတ်ယူ၍ မရသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက် ဆောင်ရွက်ပေးပါခင်ဗျာ။ 🎨✨", 
+                    chat_id, 
+                    msg.message_id, 
+                    reply_markup=markup
+                )
+
+        except Exception as e:
+            markup = InlineKeyboardMarkup(row_width=1)
+            btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
+            markup.add(btn_gem)
+            bot.edit_message_text(
+                f"⚠️ ပုံထုတ်လုပ်ရာတွင် အမှားအယွင်းရှိပါသည်:\n(Error: {str(e)})\n\nကျေးဇူးပြု၍ **Gemini Gem** ကို အသုံးပြုပေးပါခင်ဗျာ။", 
+                chat_id, 
+                msg.message_id, 
+                reply_markup=markup
+            )
 
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_text(message):
@@ -142,31 +186,26 @@ def handle_photo(message):
             )
         )
 
-        image_found = False
+        image_bytes = None
         if response.candidates:
-            candidate = response.candidates[0]
-            if candidate.content and candidate.content.parts:
-                for part in candidate.content.parts:
-                    if hasattr(part, 'inline_data') and part.inline_data:
-                        image_bytes = part.inline_data.data
-                        image_stream = BytesIO(image_bytes)
-                        image_stream.name = "upgraded_thumbnail.jpg"
-                        
-                        bot.send_photo(
-                            chat_id, 
-                            image_stream, 
-                            caption="✅ Reference ပုံကို အခြေခံ၍ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥"
-                        )
-                        image_found = True
-                        break
-        
-        if image_found:
+            for candidate in response.candidates:
+                if candidate.content and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'inline_data') and part.inline_data:
+                            image_bytes = part.inline_data.data
+                            break
+                if image_bytes:
+                    break
+
+        if image_bytes:
+            image_stream = BytesIO(image_bytes)
+            image_stream.name = "upgraded_thumbnail.jpg"
+            bot.send_photo(chat_id, image_stream, caption="✅ Reference ပုံကို အခြေခံ၍ Bot ထဲတွင် ထုတ်ပေးထားသော 3D Thumbnail အသစ် ဖြစ်ပါသည်! 🎨🔥")
             bot.delete_message(chat_id, msg.message_id)
         else:
             markup = InlineKeyboardMarkup(row_width=1)
             btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
             markup.add(btn_gem)
-            
             bot.edit_message_text(
                 "⚠️ လက်ရှိ Bot ထဲတွင် ပုံထုတ်ယူ၍ မရသေးပါ။ ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက် ဆောင်ရွက်ပေးပါခင်ဗျာ။ 🎨✨", 
                 chat_id, 
@@ -178,10 +217,8 @@ def handle_photo(message):
         markup = InlineKeyboardMarkup(row_width=1)
         btn_gem = InlineKeyboardButton("🌐 Gemini Gem သို့ သွားရန်", url=GEMINI_GEM_URL)
         markup.add(btn_gem)
-        
         bot.edit_message_text(
-            f"⚠️ လက်ရှိ function upgrade လုပ်နေဆဲဖြစ်ပါသဖြင့် Bot ထဲတွင် ပုံထုတ်၍မရသေးပါ။ "
-            f"ကျေးဇူးပြု၍ အောက်ပါခလုတ်ကိုနှိပ်ပြီး **Gemini Gem** သို့ သွားရောက် ဆောင်ရွက်ပေးပါခင်ဗျာ။ 🎨✨\n\n(Error: {str(e)})", 
+            f"⚠️ ပုံထုတ်လုပ်ရာတွင် အမှားအယွင်းရှိပါသည်:\n(Error: {str(e)})\n\nကျေးဇူးပြု၍ **Gemini Gem** ကို အသုံးပြုပေးပါခင်ဗျာ။", 
             chat_id, 
             msg.message_id, 
             reply_markup=markup
